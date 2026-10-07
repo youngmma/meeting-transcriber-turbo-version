@@ -279,7 +279,9 @@ if ('serviceWorker' in navigator) {
       <h2>Transcription engine</h2>
       <label class="lbl" for="whisperModel">Transcription model</label>
       <select id="whisperModel">
-        <option value="onnx-community/whisper-large-v3-turbo" selected>Turbo (whisper-large-v3-turbo)</option>
+        <option value="Xenova/whisper-base">Standard (fast, whisper-base)</option>
+        <option value="Xenova/whisper-small">Accurate (slower, whisper-small)</option>
+        <option value="onnx-community/whisper-large-v3-turbo" selected>Turbo (largest download, whisper-large-v3-turbo)</option>
       </select>
       <div class="muted" style="margin-top:6px">Both auto-detect Korean and English. Use Fast mode to shorten transcription time for long recordings.</div>
     </div>
@@ -678,11 +680,12 @@ const Engines = {
     const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0/dist/transformers.min.js');
     env.cacheKey = 'meeting-transcriber-turbo-whisper';
     const prog = (p)=>{ this.onProgress && this.onProgress('whisper', p.file||'', p.loaded||0, p.total||0); };
-    let device = 'wasm', dtype = 'q4';
+    const isTurbo = /turbo/i.test(this.whisperModel);
+    let device = 'wasm', dtype = isTurbo ? 'q4' : 'q8';
     try {
       if (typeof navigator !== 'undefined' && navigator.gpu) {
         const adapter = await navigator.gpu.requestAdapter();
-        if (adapter) { device = 'webgpu'; dtype = 'q4'; }
+        if (adapter) { device = 'webgpu'; dtype = isTurbo ? 'q4' : 'fp32'; }
       }
     } catch(_) {}
     try {
@@ -691,7 +694,7 @@ const Engines = {
     } catch(e) {
       if (device !== 'wasm') {
         this.whisper = await pipeline('automatic-speech-recognition', this.whisperModel,
-          { device:'wasm', dtype:'q4', progress_callback:prog });
+          { device:'wasm', dtype:(/turbo/i.test(this.whisperModel) ? 'q4' : 'q8'), progress_callback:prog });
       } else throw e;
     }
     this.whisperReady = true;

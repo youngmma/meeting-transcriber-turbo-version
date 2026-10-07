@@ -39,15 +39,16 @@ self.onmessage = async (e) => {
     if (m.type === 'init') {
       if (asr && modelId === m.model) { self.postMessage({ type: 'ready' }); return; }
       modelId = m.model;
-      // Turbo version: q4 quantized weights for both WebGPU and WASM
-      // (fp32 turbo would be ~3GB, too large for browser download).
-      let device = 'wasm', dtype = 'q4';
+      // Model-dependent dtype: turbo uses q4 everywhere (fp32 would be ~3GB);
+      // base/small use fp32 on WebGPU, q8 on WASM.
+      const isTurbo = /turbo/i.test(modelId);
+      let device = 'wasm', dtype = isTurbo ? 'q4' : 'q8';
       try {
         if (typeof navigator !== 'undefined' && navigator.gpu) {
           const adapter = await navigator.gpu.requestAdapter();
-          if (adapter) { device = 'webgpu'; dtype = 'q4'; }
+          if (adapter) { device = 'webgpu'; dtype = isTurbo ? 'q4' : 'fp32'; }
         }
-      } catch(_) { device = 'wasm'; dtype = 'q4'; }
+      } catch(_) { device = 'wasm'; dtype = isTurbo ? 'q4' : 'q8'; }
       try {
         asr = await pipeline('automatic-speech-recognition', modelId, {
           device, dtype,
@@ -60,7 +61,7 @@ self.onmessage = async (e) => {
         if (device !== 'wasm') {
           // WebGPU failed (e.g. shader compile) → retry on WASM
           asr = await pipeline('automatic-speech-recognition', modelId, {
-            device: 'wasm', dtype: 'q4',
+            device: 'wasm', dtype: /turbo/i.test(modelId) ? 'q4' : 'q8',
             progress_callback: (p) => self.postMessage({
               type: 'modelProgress',
               file: p.file || '', loaded: p.loaded || 0, total: p.total || 0,
